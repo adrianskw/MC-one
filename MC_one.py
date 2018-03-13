@@ -160,13 +160,23 @@ def pointModelError(X,F,idx):
     #             +abs((X[idx+2,:]-X[idx-0,:])/2.0/dt - (L96(X[idx+1,:],F)))**2
     # return sum(error)
 
+    # Derivative Version (Forward Euler)
+    # if idx == 0: # if we picked the first element
+    #     error =  abs((X[1,:]-X[0,:])/dt - (L96(X[0,:],F)))**2
+    # elif idx == M-1: # if we picked the last element
+    #     error =  abs((X[M-1,:]-X[M-2,:])/dt - (L96(X[M-2,:],F)))**2
+    # else: # else we have to vary in both directions
+    #     error =  abs((X[idx+1,:]-X[idx-0,:])/dt - (L96(X[idx+0,:],F)))**2 \
+    #             +abs((X[idx+0,:]-X[idx-1,:])/dt - (L96(X[idx-1,:],F)))**2
+
+    # Integral Version (Fourth Order RK)
     if idx == 0: # if we picked the first element
-        error =  abs((X[1,:]-X[0,:])/dt - (L96(X[0,:],F)))**2
+        error =  abs(X[1,:]-stepForward_RK4(X[0,:],F))**2
     elif idx == M-1: # if we picked the last element
-        error =  abs((X[M-1,:]-X[M-2,:])/dt - (L96(X[M-2,:],F)))**2
+        error =  abs(X[M-1,:]-stepForward_RK4(X[M-2,:],F))**2
     else: # else we have to vary in both directions
-        error =  abs((X[idx+1,:]-X[idx-0,:])/dt - (L96(X[idx+0,:],F)))**2 \
-                +abs((X[idx+0,:]-X[idx-1,:])/dt - (L96(X[idx-1,:],F)))**2
+        error =  abs(X[idx+1,:]-stepForward_RK4(X[idx-0,:],F))**2 \
+                +abs(X[idx+0,:]-stepForward_RK4(X[idx-1,:],F))**2
     return sum(error)
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -268,7 +278,7 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
 
 # Constants
 F_real = 8.17
-M = 500
+M = 200
 dt = 0.025
 D = 5
 Lidx = [0]
@@ -303,12 +313,13 @@ MeasError = np.array([])
 F = np.array([F_init])
 
 Rm = 0.05
-Rf = np.array([10**-8])
+Rf = np.array([10**-4])
 jump = 1.0
-it = 200 # ******* this heavily determines the quality of annealing and the run time
-steps = 100
+it = 100 # ******* this heavily determines the quality of annealing and the run time
+        # I usually leave this between M*D/20 and M*D/10
+steps = 50
 Xt = np.ones((steps,M,D))
-alpha = 1.2
+alpha = 1.5
 
 # Starting Timer
 start = time.time()
@@ -345,6 +356,7 @@ for i in range(0,steps):
     Xt[i]=X
     count += count1
     accept += accept1
+    jump = jump/1.2
 
 fig1, axs1 = plt.subplots(D, 1, sharex=True)
 plt.suptitle('End of Annealling Phase');
