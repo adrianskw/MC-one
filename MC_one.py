@@ -17,7 +17,7 @@ def enablePrint():
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Function to quickly initiate batch jobs
-# Parsing the input arguments
+# Parses the input arguments
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def initParser():
     if (len(sys.argv)!=5) or isinstance(sys.argv[1],int) or isinstance(sys.argv[2],int):
@@ -27,7 +27,7 @@ def initParser():
         print("dt float")
         print("L_frac 0<float<1")
         sys.exit(0)
-    global D
+    global D2
     global M
     global dt
     global L_frac
@@ -58,11 +58,10 @@ def L96(x,F):
     return d+F
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# This function integrates x forward in time
+# These functions integrate x forward in time
 # Updates the previous state variables using their time derivatives
-# Here we are using the simple RK4, set up for L96 now, will be generalized later
-# This is generally used for data generation
-# Will be generalized for use in the annealing steps at later time
+# Here we are using the simple RK2/4, set up for L96 now, will be generalized later
+# RK4 is used in data generation and RK2 is used (faster) in annealing
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def stepForward_RK4(x,F):
     a1 = L96(x        ,F)
@@ -71,8 +70,14 @@ def stepForward_RK4(x,F):
     a4 = L96(x+a3*dt  ,F)
     return x+(a1/6+a2/3+a3/3+a4/6)*dt
 
+# Used in annealing only, quite a lot faster and 'good enough'
+def stepForward_RK2(x,F):
+    a1 = L96(x        ,F)
+    a2 = L96(x+a1*dt/2,F)
+    return x+a2*dt
+
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Performs the integration, gives us the full data set x
+# Performs entire integration, gives us the full data set x
 # Returns state as array
 # Uses RK4 integration
 # Ideally data should be generated for very small timesteps
@@ -86,17 +91,17 @@ def generateData(x,F):
     return xt
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Discards the first few hundred data point
+# Discards the first few hundred data points
 # Makes the system forget transients and sample around the attractor
 # Same as generateData but nothing is saved
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def burnData(x,F):
     xt = np.array(x)
-    for k in range(0,500):
+    for k in range(0,1000):
         x  = stepForward_RK4(x,F)
     return x
 
-""" ANNEALING FUNCTIONS """
+""" ANNEALING AND ITS SUPPORT FUNCTIONS """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Calculates the Measurement Error for the entire time-series
 # We only sum over Lidx (observed variables)
@@ -107,7 +112,7 @@ def calcMeasError(X):
     error = 0.0
     for i in range(0,M):
         for j in Lidx:
-            error+=pointMeasError(X,i,j)
+            error+=pointmeasError(X,i,j)
     return error
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -119,65 +124,46 @@ def calcMeasError(X):
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def calcModelError(X,F):
     error = 0.0
-    # for i in range(0,M-1):
-    #     error +=abs((X[i+1,:]-X[i,:])/dt - L96(X[i,:],F))**2
-    # error +=abs((X[M-1,:]-X[M-2,:])/dt - L96(X[M-1,:],F))**2
     for i in range(0,M):
-        error += pointModelError(X,F,i)
+        error += pointmodelError(X,F,i)
     return error
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is the point-wise Measurement Error which is sometimes more useful
 # This is also called in calcMeasError()
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def pointMeasError(X,i,j):
-    return abs(X[i,j]-Y[i,j])**2
+def pointmeasError(X,i,j):
+    if j in Lidx:
+        return abs(X[i,j]-Y[i,j])**2
+    else:
+        return 0
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# This is the point-wise Model Error which is sometimes more useful
+# This is the point-wise Model Error which is more useful
 # This is called in calcModelError() above
-# The discretization here is a little flawed
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def pointModelError(X,F,idx):
-    # # NOTE: idx is the time index, aka n, and has values 0,1,....M-1
-    #
-    # if idx == 0: # if we picked the first element
-    #     error =  abs((X[1,:]-X[0,:])/1.0/dt - (L96(X[0,:],F)))**2 \
-    #             +abs((X[2,:]-X[0,:])/2.0/dt - (L96(X[1,:],F)))**2
-    # elif idx == 1: # if we picked the second element
-    #     error =  abs((X[1,:]-X[0,:])/1.0/dt - (L96(X[0,:],F)))**2 \
-    #             +abs((X[3,:]-X[1,:])/2.0/dt - (L96(X[2,:],F)))**2 \
-    #
-    # elif idx == M-1: # if we picked the last element
-    #     error =  abs((X[M-1,:]-X[M-2,:])/1.0/dt - (L96(X[M-1,:],F)))**2 \
-    #             +abs((X[M-1,:]-X[M-3,:])/2.0/dt - (L96(X[M-2,:],F)))**2
-    # elif idx == M-2: # if we picked the second last element
-    #     error =  abs((X[M-1,:]-X[M-2,:])/1.0/dt - (L96(X[M-1,:],F)))**2 \
-    #             +abs((X[M-2,:]-X[M-4,:])/2.0/dt - (L96(X[M-3,:],F)))**2
-    #
-    # else: # else we have to vary in both directions
-    #     error =  abs((X[idx+0,:]-X[idx-2,:])/2.0/dt - (L96(X[idx-1,:],F)))**2 \
-    #             +abs((X[idx+2,:]-X[idx-0,:])/2.0/dt - (L96(X[idx+1,:],F)))**2
-    # return sum(error)
-
-    # Derivative Version (Forward Euler)
-    # if idx == 0: # if we picked the first element
-    #     error =  abs((X[1,:]-X[0,:])/dt - (L96(X[0,:],F)))**2
-    # elif idx == M-1: # if we picked the last element
-    #     error =  abs((X[M-1,:]-X[M-2,:])/dt - (L96(X[M-2,:],F)))**2
-    # else: # else we have to vary in both directions
-    #     error =  abs((X[idx+1,:]-X[idx-0,:])/dt - (L96(X[idx+0,:],F)))**2 \
-    #             +abs((X[idx+0,:]-X[idx-1,:])/dt - (L96(X[idx-1,:],F)))**2
-
-    # Integral Version (Fourth Order RK)
-    if idx == 0: # if we picked the first element
-        error =  abs(X[1,:]-stepForward_RK4(X[0,:],F))**2
-    elif idx == M-1: # if we picked the last element
-        error =  abs(X[M-1,:]-stepForward_RK4(X[M-2,:],F))**2
-    else: # else we have to vary in both directions
-        error =  abs(X[idx+1,:]-stepForward_RK4(X[idx-0,:],F))**2 \
-                +abs(X[idx+0,:]-stepForward_RK4(X[idx-1,:],F))**2
-    return sum(error)
+def pointmodelError(X,F,idx):
+    youWantSlowCode = False
+    if youWantSlowCode == True:
+        # Integral Version (Fourth Order RK)
+        if idx == 0: # if we picked the first element
+            error =  abs(X[1,:]-stepForward_RK4(X[0,:],F))**2
+        elif idx == M-1: # if we picked the last element
+            error =  abs(X[M-1,:]-stepForward_RK4(X[M-2,:],F))**2
+        else: # else we have to vary in both directions
+            error =  abs(X[idx+1,:]-stepForward_RK4(X[idx-0,:],F))**2 \
+                    +abs(X[idx+0,:]-stepForward_RK4(X[idx-1,:],F))**2
+        return sum(error)
+    else:
+        # Integral Version (Second Order RK), really this is good enoough
+        if idx == 0: # if we picked the first element
+            error =  abs(X[1,:]-stepForward_RK2(X[0,:],F))**2
+        elif idx == M-1: # if we picked the last element
+            error =  abs(X[M-1,:]-stepForward_RK2(X[M-2,:],F))**2
+        else: # else we have to vary in both directions
+            error =  abs(X[idx+1,:]-stepForward_RK2(X[idx-0,:],F))**2 \
+                    +abs(X[idx+0,:]-stepForward_RK2(X[idx-1,:],F))**2
+        return sum(error)
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is our annealing routine and the workhorse of the algorithm
@@ -204,48 +190,47 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
     F_new = np.copy(F)
 
     # Calculating the initial action for inputs
-    Action = Rm*calcMeasError(X)+Rf*calcModelError(X,F)
+    measError  = calcMeasError(X)
+    modelError = calcModelError(X,F)
+    Action     = Rm*measError+Rf*modelError
 
     # Here I am doing this a fixed number of times instead of a while loop for now
     while(1):
 
         # Choose a random element of the trajectory
-        if flag == 0:
-            idx2 = np.random.choice(np.arange(D))
-        elif flag == 1:
+        if flag == 0: # Only perturbing unmeasured states (experimental)
             idx2 = np.random.choice(notLidx)
-        elif flag == 2:
-            idx2 = np.random.choice(np.arange(D+1))
-        elif flag == 3:
-            idx2 = np.random.choice([notLidx,D])
-        else:
-            print "ERROR: Undefined Flag"
+        elif flag == 1: # Purturbing all states (standard)
+            idx2 = np.random.choice(np.arange(D))
 
         # Propose a new path, by perturbing the chosen element
         if idx2 == D: # perturbing forcing parameter
             F_new = F + 0.1*jump*(np.random.rand(1)-0.5)
             X_new = np.copy(X)
             # Calculate change in the Action
-            Action_new = Rf*calcModelError(X_new,F_new)
-            Action_old = Rf*calcModelError(X,F)
+            delta_measError = 0
+            delta_modelError = calcModelError(X_new,F_new)-calcModelError(X,F)
         else: # perturbing states only
             idx  = np.random.choice(np.arange(M))
             F_new = np.copy(F)
             X_new[idx,idx2] = X[idx,idx2] + jump*(2.0*np.random.rand(1)-1.0)
             # Calculate change in the Action
-            Action_new = Rm*pointMeasError(X_new,idx,idx2)+Rf*pointModelError(X_new,F_new,idx)
-            Action_old = Rm*pointMeasError(X,idx,idx2) + Rf*pointModelError(X,F,idx)
+            delta_measError  = pointmeasError(X_new,idx,idx2) - pointmeasError(X,idx,idx2)
+            delta_modelError = pointmodelError(X_new,F_new,idx)-pointmodelError(X,F,idx)
 
-        delta =  Action_new - Action_old
+        delta_Action =  Rm*delta_measError + Rf*delta_modelError
 
-        # If the trial Action is lower, accept it (hard rejection for now)
-        if(delta<0):
-        # if(np.exp(delta)<np.random.rand(1)): # soft rejection need some fudging
+        # If the trial Action is lower, accept it
+        # if(delta<0): # hard rejection
+        if(np.exp(-delta_Action)>np.random.rand()):
             if idx2==D:
                 F = F_new
             else:
                 X[idx,idx2] = X_new[idx,idx2]
-            Action += delta
+
+            measError  += delta_measError
+            modelError += delta_modelError
+            Action     += delta_Action
             # Reseting exit count
             exit_count = 0
             # For calculating acceptance rate
@@ -262,17 +247,18 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
         count += 1
 
         # After a certain number of consecutive failures, let's say that we are at a local min
-        if exit_count == it:
+        if (exit_count == it):
             # Exit the while loop
             break
-#     print 'accepted steps:',accept_count
-#     print 'acceptance rate:',format(float(accept_count)/count*100.0, '.2f'),'%'
-    return X,F,Action,accept_count,count
+        if (count == 5*10**4):
+            # Exit the while loop
+            print 'Max Iterations Hit.'
+            break
+    return X,F,measError,modelError,Action,accept_count,count
 
 #####################################################
 # Setup of Initial Conditions for Data Generation
 #####################################################
-
 # Using seed for repeatability
 # np.random.seed(9001)
 
@@ -281,82 +267,100 @@ F_real = 8.17
 M = 200
 dt = 0.025
 D = 5
-Lidx = [0]
-notLidx = [1,2,3,4]
-
-# Perturbing from equilibrium
-x0_real = F_real*np.ones(D)+(np.random.rand(D)-0.5)
-
-# Burning the first few hundred time steps
-x0_real = burnData(x0_real,F_real)
-
-# Y_real is the original data without noise
-Y_real = generateData(x0_real,F_real)
-
-# Y is the original data Y_real plus noise
-# Y is given to the annealer
-Y = Y_real+1.0*(np.random.random_sample((M,D))-0.5)
-
+t = np.arange(M)*dt
 
 #####################################################
 # Setting up Initial Conditions for Annealing
 #####################################################
 
-F_init = 8.17
-X_init = (np.random.random_sample((M,D))-0.5)*20.0
-X_init[:,Lidx]=Y[:,Lidx]
+# Annealing Constants
+beta  = 50
+alpha = 2.0
+jump  = 5.1
+damp  = 1.1
+Rm    = 0.05
+Rf0   = 0.1
+Rf    = Rf0*alpha**np.arange(beta)
+it    = int(float(M*D)/20.0)
 
-X = np.copy(X_init)
-Action = np.array([])
-ModelError = np.array([])
-MeasError = np.array([])
-F = np.array([F_init])
+# Initial Values
+F_init = F_real
 
-Rm = 0.05
-Rf = np.array([10**-4])
-jump = 1.0
-it = 100 # ******* this heavily determines the quality of annealing and the run time
-        # I usually leave this between M*D/20 and M*D/10
-steps = 50
-Xt = np.ones((steps,M,D))
-alpha = 1.5
+# Loading Data
+Y      = np.loadtxt('L96_D_5_T_5_dt_0p025.noise')
 
-# Starting Timer
+# Replacing unmeasured states with noise
+Y[:,0] = 5.0*(2.0*np.random.rand()-1.0)*np.ones(M)
+# Y[:,1] = 5.0*(2.0*np.random.rand(M)-1.0)*np.ones(M)
+Y[:,2] = 5.0*(2.0*np.random.rand()-1.0)*np.ones(M)
+# Y[:,3] = 5.0*(2.0*np.random.rand(M)-1.0)*np.ones(M)
+# Y[:,4] = 5.0*(2.0*np.random.rand()-1.0)*np.ones(M)
+
+# NOTE: Change this accordingly when deciding which states are measured
+Lidx = [1,3,4]
+notLidx = [0,2]
+
+# Initializing the Path and Action (Rf = 0 step)
+X  = np.copy(Y)
+F  = np.array([F_init])
+Xt = np.ones((beta,M,D))
+
+#####################################################
+# Rf = 0
+#####################################################
+measError   = np.array([])
+modelError  = np.array([])
+modelError2 = np.array([])
+Action      = np.array([])
+
+#####################################################
+# Annealling First One
+#####################################################
 start = time.time()
 
-# Initiating the Path and Action
-[X,F1,Action1,accept,count]=annealAll(X,F[-1],Rm,Rf[0],jump,it,1) # flag set to 1 for burn-in
-MeasError = np.append(MeasError,calcMeasError(X))
-ModelError = np.append(ModelError,calcModelError(X,F1))
-Action = np.append(Action,Action1) # Here I just want to track the Action vs annealing step
-F = np.append(F,F1) # Here I just want to track the Forcing term vs annealing step
-print 'Burn-In has acceptance rate:', float(accept)/count*100.0,'%'
-
-#####################################################
-# Annealling and Plotting
-#####################################################
-
-print "Annealing Starting"
-print "Rf0 =", Rf[-1]
 accept = 0
 count = 0
-for i in range(0,steps):
-    if (i+1)%10==0:
-        print 'Anneal Step:', i+1
+print "Annealing Unmeasured States"
+print "Rf0 =", Rf0
+for i in range(1,beta+1):
+    flag = 1
+    # if i==1:
+    #     flag = 1
+    #     print 'Switching: Annealing All States'
+    [X,F1,measError1,modelError1,Action1,accept1,count1]=annealAll(X,F[-1],Rm,Rf0,jump,it,flag)
+    # Appending Quantities of Interest
+    measError   = np.append(measError,measError1)
+    modelError  = np.append(modelError,modelError1)
+    modelError2 = np.append(modelError2,calcModelError(X,F1))
+    Action      = np.append(Action,Action1)
+    F           = np.append(F,F1)
+    # Modifying parameters for next annealing step
+    Rf0     = alpha*Rf0
+    jump    = jump/damp
+    Xt[i-1]   = X # appending paths
+    count  += count1
+    accept += accept1
+    it     += 1
+    if i%5==0:
+        print 'Anneal Step:', i
         print 'Accetance Rate:', float(accept)/count*100.0,'%'
         print 'Trials:', count
         count = 0
         accept = 0
-    [X,F1,Action1,accept1,count1]=annealAll(X,F[-1],Rm,Rf[-1],jump,it,0) # flag set to 0, default
-    MeasError = np.append(MeasError,calcMeasError(X))
-    ModelError = np.append(ModelError,calcModelError(X,F1))
-    Action = np.append(Action,Action1) # Here I just want to track the Action vs annealing step
-    F = np.append(F,F1) # Here I just want to track the Forcing term vs annealing step
-    Rf = np.append(Rf,alpha*Rf[-1])
-    Xt[i]=X
-    count += count1
-    accept += accept1
-    jump = jump/1.2
+
+#####################################################
+# Timing and Misc Plotting
+#####################################################
+
+print 'Rf Final:', Rf0/alpha
+print 'jump Final:', jump*damp
+print 'measError Final:', measError[-1]
+print 'modelError Final:', modelError[-1]
+print 'TotalAction Final:', Action[-1]
+print 'Elapsed Time:', time.time()-start,'sec'
+
+Y_real = np.loadtxt('L96_D_5_T_5_dt_0p025.dat')
+np.savetxt('L96_D_5_T_5_dt_0p025.firstanneal',X,fmt='%9.6f',delimiter='\t\t')
 
 fig1, axs1 = plt.subplots(D, 1, sharex=True)
 plt.suptitle('End of Annealling Phase');
@@ -367,31 +371,21 @@ for i in range(0,D):
 plt.xlabel('TimeStep')
 plt.legend()
 
-#####################################################
-# Timing and Misc Plotting
-#####################################################
-
-end = time.time()
-print 'Rf Final:', Rf[-1]
-print 'MeasError Final:', MeasError[-1]
-print 'ModelError Final:', ModelError[-1]
-print 'TotalAction Final:', Action[-1]
-print 'Elapsed Time:', end-start,'sec'
-
 plt.figure(D)
 plt.suptitle('LogLog through Annealing Process');
-plt.loglog(Rf,abs(MeasError),label='MeasError = Sum[(x-y)^2]');
-plt.loglog(Rf,calcMeasError(Y_real)*np.ones(Action.size),label='MeasError Actual');
-plt.loglog(Rf,abs(ModelError),label='ModelError = Sum[(xdot-F(x))^2]');
-plt.loglog(Rf,calcModelError(Y_real,F_real)*np.ones(Action.size),label='ModelError Actual');
-plt.loglog(Rf,abs(Action),label='TotalAction = Rm*MeasError + Rf*ModelError');
+plt.loglog(Rf,abs(measError),label='measError = Sum[(x-y)^2]');
+plt.loglog(Rf,calcMeasError(Y_real)*np.ones(Action.size),label='measError Actual');
+plt.loglog(Rf,abs(modelError),label='modelError = Sum[(xdot-F(x))^2]');
+plt.loglog(Rf,abs(modelError2),label='modelError2');
+plt.loglog(Rf,calcModelError(Y_real,F_real)*np.ones(Action.size),label='modelError Actual');
+# plt.loglog(Rf,abs(Action),label='TotalAction = Rm*measError + Rf*modelError');
 plt.xlabel('AnnealStep')
 plt.legend()
 
-plt.figure(D+1)
-plt.suptitle('Forcing Parameter vs Annealin Step');
-plt.plot(F);
-plt.xlabel('AnnealStep')
+# plt.figure(D+1)
+# plt.suptitle('Forcing Parameter vs Annealin Step');
+# plt.plot(F);
+# plt.xlabel('AnnealStep')
 
 plt.figure(D+2)
 plt.suptitle('Error in Variables');
