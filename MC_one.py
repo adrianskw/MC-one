@@ -173,9 +173,6 @@ def pointmodelError(X,F,idx):
 # It can be generalized for the 'soft/probabilistic' rejection with
 # little effort, which is said to be better for many problems
 # NOTE1: Lidx and notLidx are called from the global definition, be careful
-# NOTE2: For now, flag = True tell the code to anneal F which is buggy
-#        and will be fixed later
-# Please note the flags ***
 # The difference is that this perturbs the measured state as well as
 # the unmeasured one, which has show better results empirically
 # This is, in a sense, stage 2 of the annealing, with annealAll() is the first stage
@@ -204,7 +201,7 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
             idx2 = np.random.choice(np.arange(D))
 
         # Propose a new path, by perturbing the chosen element
-        if idx2 == D: # perturbing forcing parameter
+        if idx2 == D: # perturbing forcing parameter (not doing this yet)
             F_new = F + 0.1*jump*(np.random.rand(1)-0.5)
             X_new = np.copy(X)
             # Calculate change in the Action
@@ -220,8 +217,7 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
 
         delta_Action =  Rm*delta_measError + Rf*delta_modelError
 
-        # If the trial Action is lower, accept it
-        # if(delta<0): # hard rejection
+        # If the trial Action is lower, accept it probabilistically
         if(np.exp(-delta_Action)>np.random.rand()):
             if idx2==D:
                 F = F_new
@@ -251,8 +247,8 @@ def annealAll(X,F,Rm,Rf,jump,it,flag):
             # Exit the while loop
             break
         if (count == 5*10**4):
+            print "Max Iterations Hit!"
             # Exit the while loop
-            print 'Max Iterations Hit.'
             break
     return X,F,measError,modelError,Action,accept_count,count
 
@@ -277,11 +273,11 @@ t = np.arange(M)*dt
 beta  = 50
 alpha = 2.0
 jump  = 5.1
-damp  = 1.1
+damp  = 1.2
 Rm    = 0.05
-Rf0   = 0.1
+Rf0   = 0.01
 Rf    = Rf0*alpha**np.arange(beta)
-it    = int(float(M*D)/20.0)
+it    = int(float(M*D)/10.0)
 
 # Initial Values
 F_init = F_real
@@ -320,18 +316,14 @@ start = time.time()
 
 accept = 0
 count = 0
-print "Annealing Unmeasured States"
+print "Annealing All States"
 print "Rf0 =", Rf0
 for i in range(1,beta+1):
-    flag = 1
-    # if i==1:
-    #     flag = 1
-    #     print 'Switching: Annealing All States'
+    flag = 1 # Experiemental Stuff, Don't worry about it
     [X,F1,measError1,modelError1,Action1,accept1,count1]=annealAll(X,F[-1],Rm,Rf0,jump,it,flag)
     # Appending Quantities of Interest
     measError   = np.append(measError,measError1)
-    modelError  = np.append(modelError,modelError1)
-    modelError2 = np.append(modelError2,calcModelError(X,F1))
+    modelError = np.append(modelError,calcModelError(X,F1))
     Action      = np.append(Action,Action1)
     F           = np.append(F,F1)
     # Modifying parameters for next annealing step
@@ -376,9 +368,8 @@ plt.suptitle('LogLog through Annealing Process');
 plt.loglog(Rf,abs(measError),label='measError = Sum[(x-y)^2]');
 plt.loglog(Rf,calcMeasError(Y_real)*np.ones(Action.size),label='measError Actual');
 plt.loglog(Rf,abs(modelError),label='modelError = Sum[(xdot-F(x))^2]');
-plt.loglog(Rf,abs(modelError2),label='modelError2');
 plt.loglog(Rf,calcModelError(Y_real,F_real)*np.ones(Action.size),label='modelError Actual');
-# plt.loglog(Rf,abs(Action),label='TotalAction = Rm*measError + Rf*modelError');
+plt.loglog(Rf,abs(Action),label='TotalAction = Rm*measError + Rf*modelError');
 plt.xlabel('AnnealStep')
 plt.legend()
 
