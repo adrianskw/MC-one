@@ -27,7 +27,7 @@ def initParser():
         print("dt float")
         print("L_frac 0<float<1")
         sys.exit(0)
-    global D2
+    global D
     global M
     global dt
     global L_frac
@@ -36,8 +36,18 @@ def initParser():
     M = M.astype(int)
     dt = dt.astype(float)
     L_frac = L_frac.astype(float)
-    print "Running annealSW for D = "+str(D)+ ", M = "+str(M)+ \
+    print "Running annealling for D = "+str(D)+ ", M = "+str(M)+ \
             ", dt = "+str(dt)+", L_frac = "+str(L_frac)
+
+def initAnnealingParser():
+    if (len(sys.argv)!=2) or isinstance(sys.argv[1],int):
+        print("Please enter proper arguments:")
+        print("N has to be an integer.")
+        sys.exit(0)
+    global N
+    N = np.asarray(sys.argv[1:])
+    N = N.astype(int)
+    print "Running annealling for ID = "+str(N)
 
 """ MODEL AND INTEGRATION FUNCTIONS """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
