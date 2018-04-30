@@ -9,15 +9,24 @@ import time
 # When using class functions, the appropriate variables are called
 # and saved automatically within the object. This results in neat
 # and readable code. You should be able to implement any Monte-Carlo
-# annealing schedule/strategy with this class. [See "MC_example.py"]
+# annealing schedule/strategy with this class. [See "annealer.py"]
+# NOTE: Do not attempt to use this code if any of the EXTERNAL
+# VARIABLES or DERIVED VARIABLES are not understood. Please refer to
+# some material instead, say Jingxin Ye and John C. Quinn's theses
+# on escholarship.org.
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 class Annealer:
     """ INITIALIZING ANNEALER OBJECT """
     def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre=False):
-        """ EXTERNAL VARIABLES """
-        self.Y       = np.copy(Y) # ALWAYS COPY
+
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        # EXTERNAL VARIABLES
+        # These are explicitly passed into the object container
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        self.Y       = Y
         self.model   = model
         self.dt      = dt
+      # self.F not used, saved as self.Fnew and self.Fold (see below)
         self.Lidx    = Lidx
         self.Rm      = Rm
         self.Rf      = Rf
@@ -25,18 +34,23 @@ class Annealer:
         self.delta   = delta
         self.pre     = pre
 
-        """ DERIVED VARIABLES """
-        self.Xold    = np.copy(Y) # ALWAYS COPY
-        self.Xnew    = np.copy(Y) # ALWAYS COPY
-        self.Fold    = np.copy(F) # ALWAYS COPY
-        self.Fnew    = np.copy(F) # ALWAYS COPY
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        # DERIVED VARIABLES
+        # Implicitly used in the object but are derived from external variables
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         self.M       = Y.shape[0]
         self.D       = Y.shape[1]
+        self.Fold    = np.copy(F) # ALWAYS COPY
+        self.Fnew    = np.copy(F) # ALWAYS COPY
         self.notLidx = np.setxor1d(np.arange(self.D),Lidx)
+        self.initializeData() # this sets Xnew and Xold
 
-        """ INTERNAL VARIABLES """
-        self.Didx    = 9999
-        self.Midx    = 9999
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        # INTERNAL VARIABLES
+        # These are calculated implicitly, but only during an annealing step
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        self.Didx    = 9999 # initialized as garbage values
+        self.Midx    = 9999 # initialized as garbage values
         self.calcOldModelError()
         self.calcOldMeasError()
         self.deltaMeasError  = 0
@@ -47,25 +61,25 @@ class Annealer:
 
     """ CORE FUNCTIONS """
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    # POINT-WISE ERRORS
     # Calculates point-wise error which are used in the total error
-    # 'new' refers to the Xnew state and likewise for 'old'
+    # 'new' refers to the Xnew trial state and vice versa for 'old'
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def oldPointMeasError(self,Midx,Didx):
-        if Didx in self.Lidx:
+        if Didx in self.Lidx: # fail-safe check
             return abs(self.Xold[Midx,Didx]-self.Y[Midx,Didx])**2
         else:
             return 0
 
     def newPointMeasError(self,Midx,Didx):
-        if Didx in self.Lidx:
+        if Didx in self.Lidx: # fail-safe check
             return abs(self.Xnew[Midx,Didx]-self.Y[Midx,Didx])**2
         else:
             return 0
 
-    # These two are summed over all states, but with more information and some tweaking
-    # we can sum over the 'connected' variables only
+    # NOTE: These two are summed over all states, but with more information
+    #       and some tweaking we can sum over the 'connected' variables only
     def oldPointModelError(self,Midx):
-        # Integral Version (Second Order RK), really this is good enoough
         if Midx == 0: # if we picked the first element
             error =  abs(self.Xold[       1,:]-self.RK2(self.Xold[       0,:],self.Fold))**2
         elif Midx == self.M-1: # if we picked the last element
@@ -76,7 +90,6 @@ class Annealer:
         return sum(error)
 
     def newPointModelError(self,Midx):
-        # Integral Version (Second Order RK), really this is good enoough
         if Midx == 0: # if we picked the first element
             error =  abs(self.Xnew[       1,:]-self.RK2(self.Xnew[       0,:],self.Fnew))**2
         elif Midx == self.M-1: # if we picked the last element
@@ -86,16 +99,30 @@ class Annealer:
                     +abs(self.Xnew[Midx+0,:]-self.RK2(self.Xnew[Midx-1,:],self.Fnew))**2
         return sum(error)
 
+    """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    # INTEGRATORS
+    # These are used for time marching models forward in time
+    # RK2 is used in main annealer (2x faster), and RK4 for initializer
+    """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # RK2 integration used in point model error
     def RK2(self,x,F):
-        a1 = self.model(x        ,F)
+        a1 = self.model(x             ,F)
         a2 = self.model(x+a1*self.dt/2,F)
         return x+a2*self.dt
 
+    #RK4 integration only used for initializing routine
+    def RK4(self,x,F):
+        a1 = self.model(x             ,F)
+        a2 = self.model(x+a1*self.dt/2,F)
+        a3 = self.model(x+a2*self.dt/2,F)
+        a4 = self.model(x+a3*self.dt  ,F)
+        return x+(a1/6+a2/3+a3/3+a4/6)*self.dt
+
     """ CONVENIENT WRAPPINGS OF CORE FUNCTIONS """
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Calculates the error of the entire time-series
-    # 'new' refers to the Xnew state and likewise for 'old'
+    # TOTAL ERRORS
+    # Calculates the error of the entire time-series by summing over
+    # the point-wise version of these functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def calcOldMeasError(self):
         error = 0.0
@@ -103,7 +130,6 @@ class Annealer:
             for Didx in self.Lidx:
                 error+=self.oldPointMeasError(Midx,Didx)
         self.oldMeasError = error
-        return error
 
     def calcNewMeasError(self):
         error = 0.0
@@ -111,54 +137,45 @@ class Annealer:
             for Didx in self.Lidx:
                 error+=self.newPointMeasError(Midx,Didx)
         self.newMeasError = error
-        return error
 
     def calcOldModelError(self):
         error = 0.0
         for Midx in range(0,self.M):
             error += self.oldPointModelError(Midx)
         self.oldModelError = error
-        return error
 
     def calcNewModelError(self):
         error = 0.0
         for Midx in range(0,self.M):
             error += self.newPointModelError(Midx)
         self.newModelError = error
-        return error
 
     def calcActionArray(self):
         self.ActionArray = self.Rm*np.array(self.measErrorArray)\
                          + self.Rf*np.array(self.modelErrorArray)
 
-    """ CONVENIENT WRAPPINGS OF CORE FUNCTIONS (DELTAS) """
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Calculates deltas, but only AFTER perturbation
+    # POINT-WISE DELTA ERRORS
+    # Calculates change in error before and after pertubations/trials
+    # Only use after a perturbation is proposed and saved
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def calcDeltaMeasError(self):
         self.deltaMeasError = self.newPointMeasError(self.Midx,self.Didx)\
                             - self.oldPointMeasError(self.Midx,self.Didx)
-        return self.deltaMeasError
 
     def calcDeltaModelError(self):
         self.deltaModelError = self.newPointModelError(self.Midx)\
                              - self.oldPointModelError(self.Midx)
-        return self.deltaModelError
 
     def calcDeltaAction(self):
         self.calcDeltaMeasError()
         self.calcDeltaModelError()
         self.deltaAction = self.Rm*self.deltaMeasError + self.Rf*self.deltaModelError
-        return self.deltaAction
 
-    """ CORE MONTE CARLO FUNCTIONS """
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # All RNG based functions and acceptance/rejection functions
+    # CORE MONTE CARLO FUNCTIONS
+    # All RNG based functions and acceptance/rejection functions are here
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Preannealing trick, by default set to False
-    def setPreannealingTrue(self):
-        self.pre = True
-
     def rollDidx(self):
         if self.pre == True:
             self.Didx = np.random.choice(self.notLidx)
@@ -175,28 +192,24 @@ class Annealer:
         # Perturb old to get new
         self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]\
                                        + self.delta*(2.0*np.random.rand()-1.0)
-        return 'Perturbed'
 
     def evalSoftAcceptance(self):
         self.calcDeltaAction()
         self.isAccepted = (np.exp(-self.deltaAction)>np.random.rand())
-        return self.isAccepted
 
     def evalHardAcceptance(self):
         self.calcDeltaAction()
         self.isAccepted = (self.deltaAction<0)
-        return self.isAccepted
 
     def keepOldState(self):
         self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]
-        return 'Old State Kept'
 
     def keepNewState(self):
         self.Xold[self.Midx,self.Didx] = self.Xnew[self.Midx,self.Didx]
-        return 'New State Kept'
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Updating annealer parameters
+    # UPDATING FUNCTIONS
+    # Used to update annealing parameters as desired
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def updateRf(self,Rf):
         self.Rf = Rf
@@ -210,11 +223,36 @@ class Annealer:
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Misc Functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    # Preannealing trick, by default set to False
+    def setPreannealingTrue(self):
+        self.pre = True
+
+    # For sanity sake, here's the conjugate function
+    def setPreannealingFalse(self):
+        self.pre = False
+
+    # Appends the errors into an array that stores ALL errors from previous beta
     def appendErrors(self):
         self.measErrorArray = np.append(self.measErrorArray,\
                                         self.measErrorArray[-1]+self.deltaMeasError)
         self.modelErrorArray = np.append(self.modelErrorArray,\
                                          self.modelErrorArray[-1]+self.deltaModelError)
+
+    # This calculates action array from measurement and model errors
+    def calcActionArray(self):
+        self.ActionArray = self.Rm*np.array(self.measErrorArray)\
+                         + self.Rf*np.array(self.modelErrorArray)
+
+    # Henry's initialization trick, by default set to True
+    # Calculates the trajectories forward with bad initial conditions
+    # but this trajectory is still 'close' to the actual solution
+    def initializeData(self):
+        X = np.copy(self.Y)
+        for k in range(0,self.M-1):
+            X[k+1,self.notLidx]  = self.RK4(X[k],self.Fold)[self.notLidx]
+        self.Y    = np.copy(X)
+        self.Xold = np.copy(X)
+        self.Xnew = np.copy(X)
 
     """ END ANNEALER CLASS """
 
