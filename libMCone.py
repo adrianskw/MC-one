@@ -17,7 +17,7 @@ import time
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 class Annealer:
     """ INITIALIZING ANNEALER OBJECT """
-    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre=False):
+    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre):
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # EXTERNAL VARIABLES
@@ -26,7 +26,7 @@ class Annealer:
         self.Y       = Y
         self.model   = model
         self.dt      = dt
-      # self.F not used, saved as self.Fnew and self.Fold (see below)
+      # self.F not used, saved as Fnew and Fold (see below)
         self.Lidx    = Lidx
         self.Rm      = Rm
         self.Rf      = Rf
@@ -43,7 +43,13 @@ class Annealer:
         self.Fold    = np.copy(F) # ALWAYS COPY
         self.Fnew    = np.copy(F) # ALWAYS COPY
         self.notLidx = np.setxor1d(np.arange(self.D),Lidx)
-        self.initializeData() # this sets Xnew and Xold
+        if   self.pre = True:
+            self.initializeData() # this sets Xnew and Xold
+        elif self.pre = False:
+            self.Xold = np.copy(Y)
+            self.Xnew = np.copy(Y)
+        else:
+            print "self.pre not initialized properly"
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # INTERNAL VARIABLES
@@ -110,7 +116,7 @@ class Annealer:
         a2 = self.model(x+a1*self.dt/2,F)
         return x+a2*self.dt
 
-    #RK4 integration only used for initializing routine
+    # RK4 integration only used for initializing routine
     def RK4(self,x,F):
         a1 = self.model(x             ,F)
         a2 = self.model(x+a1*self.dt/2,F)
@@ -223,14 +229,6 @@ class Annealer:
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Misc Functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Preannealing trick, by default set to False
-    def setPreannealingTrue(self):
-        self.pre = True
-
-    # For sanity sake, here's the conjugate function
-    def setPreannealingFalse(self):
-        self.pre = False
-
     # Appends the errors into an array that stores ALL errors from previous beta
     def appendErrors(self):
         self.measErrorArray = np.append(self.measErrorArray,\
