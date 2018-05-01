@@ -43,9 +43,9 @@ class Annealer:
         self.Fold    = np.copy(F) # ALWAYS COPY
         self.Fnew    = np.copy(F) # ALWAYS COPY
         self.notLidx = np.setxor1d(np.arange(self.D),Lidx)
-        if   self.pre = True:
+        if   self.pre == True:
             self.initializeData() # this sets Xnew and Xold
-        elif self.pre = False:
+        elif self.pre == False:
             self.Xold = np.copy(Y)
             self.Xnew = np.copy(Y)
         else:

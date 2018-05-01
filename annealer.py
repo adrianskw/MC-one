@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 """ EXAMPLE FUNCTION THAT CALLS CLASS FUNCTIONS """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is our annealing routine and the workhorse of the algorithm
-# Right now, this is taken for F as a constant-in-time scalar which
-# will be generalized for vector F later on
+# Right now, this is taken for F as a constant-in-time scalar, which
+# is known exactly, but will be generalized for vector F later on.
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def annealAll(MC):
     accept_count = 0
@@ -30,9 +30,10 @@ def annealAll(MC):
 
 """ EXAMPLE ROUTINE USING annealAll(MC) """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Quick example that should get you familiar with the code
-# Note that preannealing is set to True here
-# By the way, 'overflow encountered in exp' error is expected
+# Quick example that should get you familiar with the code.
+# Note that preannealing is set to True here, therefore we are
+# only doing preannealing and not the main annealer.
+# By the way, 'overflow encountered in exp' error is expected.
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 M = 200
 D = 5
@@ -55,8 +56,7 @@ for i in notLidx:
     Y[:,i] = 5.0*(2.0*np.random.rand()-1.0)*np.ones(M)
 
 # Initializing the MC object
-MC = Annealer(Y,L96,dt,F,Lidx,Rm,Rf,maxIt,delta)
-MC.setPreannealingTrue()
+MC = Annealer(Y,L96,dt,F,Lidx,Rm,Rf,maxIt,delta,True)
 
 beta = 25
 Xt = np.ones((beta+1,M,D))
