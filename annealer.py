@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is our annealing routine and the workhorse of the algorithm
 # The point of this code is that the user is free to design their
-# own annealing routine. Here is a standard one as example:
+# own annealing routine. Here is a preannealer as example:
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def annealAll(MC):
     accept_count = 0
@@ -45,8 +45,8 @@ maxIt = 2*M*D
 delta = 1.0
 Y = np.loadtxt('./data/L96_D_5_T_5_dt_0p025.noise')
 Z = np.loadtxt('./data/L96_D_5_T_5_dt_0p025.dat')
-Lidx = [0,2,3]
-notLidx = [1,4]
+Lidx = [1,3]
+notLidx = [0,2,4]
 measError = np.array([])
 modelError = np.array([])
 Action = np.array([])
