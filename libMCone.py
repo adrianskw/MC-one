@@ -17,7 +17,7 @@ import time
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 class Annealer:
     """ INITIALIZING ANNEALER OBJECT """
-    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre):
+    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre,flagF=True):
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # EXTERNAL VARIABLES
@@ -33,6 +33,7 @@ class Annealer:
         self.maxIt   = maxIt
         self.delta   = delta
         self.pre     = pre
+        self.flagF   = flagF
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # DERIVED VARIABLES
@@ -48,8 +49,6 @@ class Annealer:
         elif self.pre == False:
             self.Xold = np.copy(Y)
             self.Xnew = np.copy(Y)
-        else:
-            print "self.pre not initialized properly"
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # INTERNAL VARIABLES
@@ -166,12 +165,19 @@ class Annealer:
     # Only use after a perturbation is proposed and saved
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def calcDeltaMeasError(self):
-        self.deltaMeasError = self.newPointMeasError(self.Midx,self.Didx)\
-                            - self.oldPointMeasError(self.Midx,self.Didx)
+        if self.Midx < self.M:
+            self.deltaMeasError = self.newPointMeasError(self.Midx,self.Didx)\
+                                - self.oldPointMeasError(self.Midx,self.Didx)
+        elif self.Midx == self.M:
+            self.deltaMeasError = 0.0
 
     def calcDeltaModelError(self):
-        self.deltaModelError = self.newPointModelError(self.Midx)\
-                             - self.oldPointModelError(self.Midx)
+        if self.Midx < self.M:
+            self.deltaModelError = self.newPointModelError(self.Midx)\
+                                 - self.oldPointModelError(self.Midx)
+        elif self.Midx == self.M:
+            self.calcNewModelError()
+            self.deltaModelError = self.newModelError - self.modelErrorArray[-1]
 
     def calcDeltaAction(self):
         self.calcDeltaMeasError()
@@ -189,15 +195,21 @@ class Annealer:
             self.Didx = np.random.choice(np.arange(self.D))
 
     def rollMidx(self):
-        self.Midx = np.random.choice(np.arange(self.M))
+        if self.flagF == True:
+            self.Midx = np.random.choice(np.arange(self.M+1))
+        elif self.flagF == False:
+            self.Midx = np.random.choice(np.arange(self.M))
 
     def perturbState(self):
         # Roll indices to perturb
         self.rollMidx()
         self.rollDidx()
         # Perturb old to get new
-        self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]\
-                                       + self.delta*(2.0*np.random.rand()-1.0)
+        if self.Midx < self.M:
+            self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]\
+                                            + self.delta*(2.0*np.random.rand()-1.0)
+        elif self.Midx == self.M:
+            self.Fnew = self.Fold + self.delta*(2.0*np.random.rand()-1.0)
 
     def evalSoftAcceptance(self):
         self.calcDeltaAction()
@@ -208,10 +220,16 @@ class Annealer:
         self.isAccepted = (self.deltaAction<0)
 
     def keepOldState(self):
-        self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]
+        if self.Midx < self.M:
+            self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]
+        elif self.Midx == self.M:
+            self.Fnew = self.Fold
 
     def keepNewState(self):
-        self.Xold[self.Midx,self.Didx] = self.Xnew[self.Midx,self.Didx]
+        if self.Midx < self.M:
+            self.Xold[self.Midx,self.Didx] = self.Xnew[self.Midx,self.Didx]
+        elif self.Midx == self.M:
+            self.Fold = self.Fnew
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # UPDATING FUNCTIONS

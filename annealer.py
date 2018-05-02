@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 """ EXAMPLE FUNCTION THAT CALLS CLASS FUNCTIONS """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is our annealing routine and the workhorse of the algorithm
-# Right now, this is taken for F as a constant-in-time scalar, which
-# is known exactly, but will be generalized for vector F later on.
+# The point of this code is that the user is free to design their
+# own annealing routine. Here is a standard one as example:
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def annealAll(MC):
     accept_count = 0
@@ -38,18 +38,19 @@ def annealAll(MC):
 M = 200
 D = 5
 dt = 0.025
-F = 8.17
-Rm = 0.05
+F = 8.25
+Rm = 5.0
 Rf = Rm
-maxIt = 1000
-delta = 3.0
+maxIt = 2*M*D
+delta = 1.0
 Y = np.loadtxt('./data/L96_D_5_T_5_dt_0p025.noise')
 Z = np.loadtxt('./data/L96_D_5_T_5_dt_0p025.dat')
-Lidx = [0,1,2,3]
-notLidx = [4]
+Lidx = [0,2,3]
+notLidx = [1,4]
 measError = np.array([])
 modelError = np.array([])
 Action = np.array([])
+np.random.seed(1234)
 
 # Replacing unmeasured states with noise
 for i in notLidx:
@@ -57,35 +58,53 @@ for i in notLidx:
 
 # Initializing the MC object
 MC = Annealer(Y,L96,dt,F,Lidx,Rm,Rf,maxIt,delta,True)
+Xinit = np.copy(MC.Xold)
 
-beta = 25
-Xt = np.ones((beta+1,M,D))
-Xt[0] = np.copy(Y)
-for i in range(1,beta+1):
+beta = 15
+Xt = np.ones((beta,M,D))
+for i in range(0,beta):
     [accept,count]=annealAll(MC)
-    print 'beta =',i,'accept rate = ',float(accept)/count
+    print 'beta =',i,'accept rate = ',float(accept)/count,'Rf = ',MC.Rf,'delta = ',MC.delta
     Xt[i]     = MC.Xnew
     measError = np.append(measError,MC.measErrorArray)
     modelError = np.append(modelError,MC.modelErrorArray)
     Action = np.append(Action,MC.ActionArray)
     MC.updateRf(1.9*MC.Rf)
-    MC.updateDelta(MC.delta/1.15)
-    MC.updateMaxIt(int(MC.maxIt*1.15))
+    MC.updateDelta(MC.delta/1.2)
+    MC.updateMaxIt(int(MC.maxIt*1.2))
 
 np.savetxt(''.join(['./data/L96.path.dat']),Xt[-1],fmt='%9.6f',delimiter='\t\t')
 np.savetxt(''.join(['./data/L96.misc.dat']),np.stack((measError,modelError,Action),axis=1)\
                     ,fmt='%9.6e',delimiter='\t\t')
 
 # Plotting Stuff
+f, ax = plt.subplots(5, sharex=True, sharey=True)
+f.subplots_adjust(hspace=0)
+plt.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
+
+
 plt.figure(0)
-plt.semilogy(MC.modelErrorArray)
-plt.xlabel('Total Iterations (roughly proportional to beta)')
-plt.ylabel('Model Error')
+for i in range(0,5):
+    plt.subplot(5,1,i+1)
+    plt.plot(Z[:,i],'k',label='True Solution')
+    plt.plot(Xinit[:,i],label='Initial Guess')
+plt.suptitle('After Initialization Step')
+plt.legend()
 
 plt.figure(1)
 for i in range(0,5):
     plt.subplot(5,1,i+1)
-    plt.plot(np.transpose(Xt[:,:,i]))
-    plt.plot(Z[:,i],'k')
+    plt.plot(Z[:,i],'k',label='True Solution')
+    plt.plot(np.transpose(Xt[:-2,:,i]))
+    plt.plot(np.transpose(Xt[-1,:,i]),label='Latest Proposed Solution')
+plt.suptitle('After Preannealing Step')
+plt.legend()
 
+plt.figure(2)
+plt.semilogy(MC.modelErrorArray)
+plt.xlabel('Total Iterations (roughly proportional to beta)')
+plt.ylabel('Model Error')
+plt.title('Model Error vs Total Iteration')
+
+print "Final Forcing",MC.Fold
 plt.show()
