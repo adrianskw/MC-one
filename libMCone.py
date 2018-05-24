@@ -23,28 +23,28 @@ class Annealer:
         # EXTERNAL VARIABLES
         # These are explicitly passed into the object container
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.Y       = Y
-        self.model   = model
-        self.dt      = dt
+        self.Y        = Y
+        self.model    = model
+        self.dt       = dt
       # self.F not used, saved as Fnew and Fold (see below)
-        self.Lidx    = Lidx
-        self.Rm      = Rm
-        self.Rf      = Rf
-        self.maxIt   = maxIt
-        self.delta   = delta
-        self.pre     = pre
-        self.flagF   = flagF
+        self.Lidx     = Lidx
+        self.Rm       = Rm
+        self.Rf       = Rf
+        self.maxIt    = maxIt
+        self.delta    = delta
+        self.pre      = pre
+        self.flagF    = flagF
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # DERIVED VARIABLES
         # Implicitly used in the object but are derived from external variables
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.M       = Y.shape[0]
-        self.D       = Y.shape[1]
-        self.Fold    = np.copy(F) # ALWAYS COPY
-        self.Fnew    = np.copy(F) # ALWAYS COPY
-        self.notLidx = np.setxor1d(np.arange(self.D),Lidx)
-        if   self.pre == True:
+        self.Fold     = np.copy(F) # ALWAYS COPY
+        self.Fnew     = np.copy(F) # ALWAYS COPY
+        self.M        = Y.shape[0]
+        self.D        = Y.shape[1]
+        self.notLidx  = np.setxor1d(np.arange(self.D),Lidx)
+        if self.pre == True:
             self.initializeData() # this sets Xnew and Xold
         elif self.pre == False:
             self.Xold = np.copy(Y)
@@ -52,16 +52,18 @@ class Annealer:
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # INTERNAL VARIABLES
-        # These are calculated implicitly, but only during an annealing step
+        # These are calculated implicitly, but ONLY during an annealing step
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         self.Didx    = 9999 # initialized as garbage values
         self.Midx    = 9999 # initialized as garbage values
-        self.calcOldModelError()
-        self.calcOldMeasError()
         self.deltaMeasError  = 0
         self.deltaModelError = 0
-        self.isAccepted = False
-        self.measErrorArray = np.array([self.oldMeasError])
+        self.isAccepted      = False
+        self.calcOldMeasError()
+        self.calcOldModelError()
+        self.oldAction       = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
+        self.actionArray     = np.array([self.oldAction])
+        self.measErrorArray  = np.array([self.oldMeasError])
         self.modelErrorArray = np.array([self.oldModelError])
 
     """ CORE FUNCTIONS """
@@ -155,10 +157,6 @@ class Annealer:
             error += self.newPointModelError(Midx)
         self.newModelError = error
 
-    def calcActionArray(self):
-        self.ActionArray = self.Rm*np.array(self.measErrorArray)\
-                         + self.Rf*np.array(self.modelErrorArray)
-
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # POINT-WISE DELTA ERRORS
     # Calculates change in error before and after pertubations/trials
@@ -177,7 +175,7 @@ class Annealer:
                                  - self.oldPointModelError(self.Midx)
         elif self.Midx == self.M:
             self.calcNewModelError()
-            self.deltaModelError = self.newModelError - self.modelErrorArray[-1]
+            self.deltaModelError = self.newModelError - self.oldModelError
 
     def calcDeltaAction(self):
         self.calcDeltaMeasError()
@@ -230,6 +228,7 @@ class Annealer:
             self.Xold[self.Midx,self.Didx] = self.Xnew[self.Midx,self.Didx]
         elif self.Midx == self.M:
             self.Fold = self.Fnew
+        self.appendErrors()
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # UPDATING FUNCTIONS
@@ -247,20 +246,42 @@ class Annealer:
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Misc Functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-    # Appends the errors into an array that stores ALL errors from previous beta
-    def appendErrors(self):
-        self.measErrorArray = np.append(self.measErrorArray,\
-                                        self.measErrorArray[-1]+self.deltaMeasError)
-        self.modelErrorArray = np.append(self.modelErrorArray,\
-                                         self.modelErrorArray[-1]+self.deltaModelError)
+    # For switching on/off the preconditioning routine
+    def setPreTrue(self):
+        self.pre = True
 
-    # This calculates action array from measurement and model errors
-    def calcActionArray(self):
-        self.ActionArray = self.Rm*np.array(self.measErrorArray)\
-                         + self.Rf*np.array(self.modelErrorArray)
+    def setPreFalse(self):
+        self.pre = False
+
+    # Reset Errors
+    def resetErrors(self):
+        self.calcOldMeasError()
+        self.calcOldModelError()
+        self.oldAction = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
+
+    # Reset Arrays
+    def resetArrays(self):
+        self.actionArray     = np.array([self.oldAction])
+        self.measErrorArray  = np.array([self.oldMeasError])
+        self.modelErrorArray = np.array([self.oldModelError])
+
+    # Appends the errors into an array that stores ALL errors from previous beta
+    # Also calculates the latest (rolling) value of the action/errors
+    def appendErrors(self):
+        self.oldMeasError    = self.oldMeasError+self.deltaMeasError
+        self.oldModelError   = self.oldModelError+self.deltaModelError
+        self.oldAction       = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
+        self.actionArray     = np.append(self.actionArray,self.oldAction)
+        self.measErrorArray  = np.append(self.measErrorArray,self.oldMeasError)
+        self.modelErrorArray = np.append(self.modelErrorArray,self.oldModelError)
+
+    def replaceXold(self,Xlow):
+        self.Xold = np.copy(Xlow)
+        self.Xnew = np.copy(Xlow)
+        self.resetErrors()
 
     # Henry's initialization trick, by default set to True
-    # Calculates the trajectories forward with bad initial conditions
+    # Calculates the trajectories forward with 'bad' initial conditions
     # but this trajectory is still 'close' to the actual solution
     def initializeData(self):
         X = np.copy(self.Y)
@@ -337,29 +358,16 @@ def L96(x,F):
     return d+F
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# These functions integrate x forward in time
-# Updates the previous state variables using their time derivatives
-# Here we are using the simple RK4, set up for L96 now
-# RK4 is used in data generation and RK2 is used (faster) in annealing
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def stepForward_RK4(x,F):
-    a1 = L96(x        ,F)
-    a2 = L96(x+a1*dt/2,F)
-    a3 = L96(x+a2*dt/2,F)
-    a4 = L96(x+a3*dt  ,F)
-    return x+(a1/6+a2/3+a3/3+a4/6)*dt
-
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Performs entire integration, gives us the full data set x
 # Returns state as array
 # Uses RK4 integration
 # Ideally data should be generated for very small timesteps
 # for high-quality data, then down-sampled and fed into the annealer
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def generateData(x,F):
+def generateData(x,F,dt):
     xt = np.array(x)
     for k in range(0,M-1):
-        x  = stepForward_RK4(x,F)
+        x  = RK4(x,F,dt)
         xt = np.vstack((xt,x))
     return xt
 
@@ -368,8 +376,75 @@ def generateData(x,F):
 # Makes the system forget transients and sample around the attractor
 # Same as generateData but nothing is saved
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def burnData(x,F):
+def burnData(x,F,dt):
     xt = np.array(x)
     for k in range(0,1000):
-        x  = stepForward_RK4(x,F)
+        x  = RK4(x,F,dt)
     return x
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# Integrators, ripped from class functions
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# RK2 integration used in point model error
+def RK2(x,F,dt):
+    a1 = L96(x        ,F)
+    a2 = L96(x+a1*dt/2,F)
+    return x+a2*dt
+
+# RK4 integration only used for genrating data
+def RK4(x,F,dt):
+    a1 = L96(x             ,F)
+    a2 = L96(x+a1*dt/2,F)
+    a3 = L96(x+a2*dt/2,F)
+    a4 = L96(x+a3*dt  ,F)
+    return x+(a1/6+a2/3+a3/3+a4/6)*dt
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# Expected Errors Calculation
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+def calcRealError(Z,Y,M,D,dt,Lidx):
+    notLidx  = np.setxor1d(np.arange(D),Lidx)
+
+    modelError = 0
+    for i in range(0,M):
+        modelError += pointModelErrorRK2(Z,Y,M,i,8.17,dt)
+
+    # Replacing unmeasured states with noise
+    for i in notLidx:
+        Y[:,i] = 5.0*(2.0*np.random.rand()-1.0)*np.ones(M)
+
+    measError = 0
+    for i in range(0,M):
+        for j in Lidx:
+            measError += pointMeasError(Z,Y,i,j,Lidx)
+
+    return measError,modelError
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# Functions used in calcRealError, ripped from class functions
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+def pointModelErrorRK2(X,Y,M,Midx,F,dt):
+    if Midx == 0: # if we picked the first element
+        error =  abs(X[       1,:]-RK2(X[       0,:],F,dt))**2
+    elif Midx == M-1: # if we picked the last element
+        error =  abs(X[M-1,:]-RK2(X[M-2,:],F,dt))**2
+    else: # else we have to vary in both directions
+        error =  abs(X[Midx+1,:]-RK2(X[Midx-0,:],F,dt))**2 \
+                +abs(X[Midx+0,:]-RK2(X[Midx-1,:],F,dt))**2
+    return sum(error)
+
+def pointModelErrorRK4(X,Y,M,Midx,F,dt):
+    if Midx == 0: # if we picked the first element
+        error =  abs(X[       1,:]-RK4(X[       0,:],F,dt))**2
+    elif Midx == M-1: # if we picked the last element
+        error =  abs(X[M-1,:]-RK4(X[M-2,:],F,dt))**2
+    else: # else we have to vary in both directions
+        error =  abs(X[Midx+1,:]-RK4(X[Midx-0,:],F,dt))**2 \
+                +abs(X[Midx+0,:]-RK4(X[Midx-1,:],F,dt))**2
+    return sum(error)
+
+def pointMeasError(X,Y,Midx,Didx,Lidx):
+    if Didx in Lidx: # fail-safe check
+        return abs(X[Midx,Didx]-Y[Midx,Didx])**2
+    else:
+        return 0
