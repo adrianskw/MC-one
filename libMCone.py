@@ -23,32 +23,38 @@ class Annealer:
         # EXTERNAL VARIABLES
         # These are explicitly passed into the object container
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.Y        = Y
+        self.Y        = np.copy(Y)
         self.model    = model
         self.dt       = dt
       # self.F not used, saved as Fnew and Fold (see below)
         self.Lidx     = Lidx
         self.Rm       = Rm
-        self.Rf       = Rf
         self.maxIt    = maxIt
-        self.delta    = delta
         self.pre      = pre
         self.flagF    = flagF
+        self.Rf       = np.copy(Rf)
+        self.delta    = np.copy(delta)
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # DERIVED VARIABLES
         # Implicitly used in the object but are derived from external variables
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.Fold     = np.copy(F) # ALWAYS COPY
-        self.Fnew     = np.copy(F) # ALWAYS COPY
+        if isinstance(F,int) or isinstance(F,float):
+            self.Fold = np.array([F])
+            self.Fnew = np.array([F])
+        else:
+            self.Fold     = np.copy(F) # ALWAYS COPY
+            self.Fnew     = np.copy(F) # ALWAYS COPY
+        self.NF       = self.Fnew.size
+        if self.flagF == False:
+            self.NF = 0
         self.M        = Y.shape[0]
         self.D        = Y.shape[1]
         self.notLidx  = np.setxor1d(np.arange(self.D),Lidx)
-        if self.pre == True:
-            self.initializeData() # this sets Xnew and Xold
-        elif self.pre == False:
-            self.Xold = np.copy(Y)
-            self.Xnew = np.copy(Y)
+        # self.Xold     = np.copy(Y)
+        # self.Xnew     = np.copy(Y)
+        self.initializeData() # this sets Xnew and Xold
+        self.resetContainer()
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # INTERNAL VARIABLES
@@ -147,15 +153,15 @@ class Annealer:
 
     def calcOldModelError(self):
         error = 0.0
-        for Midx in range(0,self.M):
-            error += self.oldPointModelError(Midx)
-        self.oldModelError = error
+        for Midx in range(0,self.M-1):
+            error += abs(self.Xold[Midx+1,:]-self.RK2(self.Xold[Midx,:],self.Fnew))**2
+        self.oldModelError = sum(error)
 
     def calcNewModelError(self):
         error = 0.0
-        for Midx in range(0,self.M):
-            error += self.newPointModelError(Midx)
-        self.newModelError = error
+        for Midx in range(0,self.M-1):
+            error += abs(self.Xnew[Midx+1,:]-self.RK2(self.Xnew[Midx,:],self.Fnew))**2
+        self.newModelError = sum(error)
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # POINT-WISE DELTA ERRORS
@@ -166,14 +172,14 @@ class Annealer:
         if self.Midx < self.M:
             self.deltaMeasError = self.newPointMeasError(self.Midx,self.Didx)\
                                 - self.oldPointMeasError(self.Midx,self.Didx)
-        elif self.Midx == self.M:
+        elif self.Midx >= self.M:
             self.deltaMeasError = 0.0
 
     def calcDeltaModelError(self):
         if self.Midx < self.M:
             self.deltaModelError = self.newPointModelError(self.Midx)\
                                  - self.oldPointModelError(self.Midx)
-        elif self.Midx == self.M:
+        elif self.Midx >= self.M:
             self.calcNewModelError()
             self.deltaModelError = self.newModelError - self.oldModelError
 
@@ -193,10 +199,10 @@ class Annealer:
             self.Didx = np.random.choice(np.arange(self.D))
 
     def rollMidx(self):
-        if self.flagF == True:
-            self.Midx = np.random.choice(np.arange(self.M+1))
-        elif self.flagF == False:
-            self.Midx = np.random.choice(np.arange(self.M))
+        if self.pre == True and self.NF > 1:
+            self.Midx = np.random.choice(np.append(np.arange(self.M),self.M+self.notLidx))
+        else:
+            self.Midx = np.random.choice(np.arange(self.M+self.NF))
 
     def perturbState(self):
         # Roll indices to perturb
@@ -206,8 +212,8 @@ class Annealer:
         if self.Midx < self.M:
             self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]\
                                             + self.delta*(2.0*np.random.rand()-1.0)
-        elif self.Midx == self.M:
-            self.Fnew = self.Fold + self.delta*(2.0*np.random.rand()-1.0)
+        elif self.Midx >= self.M:
+            self.Fnew[self.Midx-self.M] = self.Fold[self.Midx-self.M] + self.delta*(2.0*np.random.rand()-1.0)
 
     def evalSoftAcceptance(self):
         self.calcDeltaAction()
@@ -220,14 +226,14 @@ class Annealer:
     def keepOldState(self):
         if self.Midx < self.M:
             self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]
-        elif self.Midx == self.M:
-            self.Fnew = self.Fold
+        elif self.Midx >= self.M:
+            self.Fnew = np.copy(self.Fold)
 
     def keepNewState(self):
         if self.Midx < self.M:
             self.Xold[self.Midx,self.Didx] = self.Xnew[self.Midx,self.Didx]
-        elif self.Midx == self.M:
-            self.Fold = self.Fnew
+        elif self.Midx >= self.M:
+            self.Fold = np.copy(self.Fnew)
         self.appendErrors()
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -243,6 +249,8 @@ class Annealer:
     def updateMaxIt(self,maxIt):
         self.maxIt = maxIt
 
+    def resetContainer(self):
+        self.Xcontainer = np.zeros(self.Xnew.shape)
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Misc Functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
