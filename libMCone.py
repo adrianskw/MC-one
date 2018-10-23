@@ -17,23 +17,24 @@ import time
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 class Annealer:
     """ INITIALIZING ANNEALER OBJECT """
-    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,pre,flagF=True):
+    def __init__(self,Y,model,dt,F,Lidx,Rm,Rf,maxIt,delta,flagPre=True,flagF=True,flagAppend=True):
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # EXTERNAL VARIABLES
         # These are explicitly passed into the object container
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.Y        = np.copy(Y)
-        self.model    = model
-        self.dt       = dt
       # self.F not used, saved as Fnew and Fold (see below)
-        self.Lidx     = Lidx
-        self.Rm       = Rm
-        self.maxIt    = maxIt
-        self.pre      = pre
-        self.flagF    = flagF
-        self.Rf       = np.copy(Rf)
-        self.delta    = np.copy(delta)
+        self.Y          = np.copy(Y)
+        self.model      = model
+        self.dt         = dt
+        self.Lidx       = Lidx
+        self.Rm         = Rm
+        self.maxIt      = maxIt
+        self.flagPre    = flagPre
+        self.flagF      = flagF
+        self.flagAppend = flagAppend
+        self.Rf         = np.copy(Rf)
+        self.delta      = np.copy(delta)
 
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
         # DERIVED VARIABLES
@@ -43,11 +44,11 @@ class Annealer:
             self.Fold = np.array([F])
             self.Fnew = np.array([F])
         else:
-            self.Fold     = np.copy(F) # ALWAYS COPY
-            self.Fnew     = np.copy(F) # ALWAYS COPY
+            self.Fold = np.copy(F) # ALWAYS COPY
+            self.Fnew = np.copy(F) # ALWAYS COPY
         self.NF       = self.Fnew.size
         if self.flagF == False:
-            self.NF = 0
+            self.NF   = 0
         self.M        = Y.shape[0]
         self.D        = Y.shape[1]
         self.notLidx  = np.setxor1d(np.arange(self.D),Lidx)
@@ -60,17 +61,21 @@ class Annealer:
         # INTERNAL VARIABLES
         # These are calculated implicitly, but ONLY during an annealing step
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        self.Didx    = 9999 # initialized as garbage values
-        self.Midx    = 9999 # initialized as garbage values
-        self.deltaMeasError  = 0
-        self.deltaModelError = 0
-        self.isAccepted      = False
+        self.Didx             = 9999 # initialized as garbage values
+        self.Midx             = 9999 # initialized as garbage values
+        self.deltaMeasError   = 0
+        self.deltaModelError  = 0
+        self.isAccepted       = False
         self.calcOldMeasError()
         self.calcOldModelError()
-        self.oldAction       = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
-        self.actionArray     = np.array([self.oldAction])
-        self.measErrorArray  = np.array([self.oldMeasError])
-        self.modelErrorArray = np.array([self.oldModelError])
+        self.oldAction        = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
+        self.oldModelAction   = self.Rf*self.oldModelError
+        self.measErrorArray   = np.array([self.oldMeasError])
+        self.modelErrorArray  = np.array([self.oldModelError])
+        self.actionArray      = np.array([self.oldAction])
+        self.modelActionArray = np.array([self.oldModelAction])
+        self.set1             = np.append(np.arange(self.M),self.M+self.notLidx)
+        self.set2             = np.arange(self.M+self.NF)
 
     """ CORE FUNCTIONS """
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -93,23 +98,23 @@ class Annealer:
     # NOTE: These two are summed over all states, but with more information
     #       and some tweaking we can sum over the 'connected' variables only
     def oldPointModelError(self,Midx):
-        if Midx == 0: # if we picked the first element
+        if Midx   == 0: # if we picked the first element
             error =  abs(self.Xold[       1,:]-self.RK2(self.Xold[       0,:],self.Fold))**2
         elif Midx == self.M-1: # if we picked the last element
             error =  abs(self.Xold[self.M-1,:]-self.RK2(self.Xold[self.M-2,:],self.Fold))**2
         else: # else we have to vary in both directions
-            error =  abs(self.Xold[Midx+1,:]-self.RK2(self.Xold[Midx-0,:],self.Fold))**2 \
-                    +abs(self.Xold[Midx+0,:]-self.RK2(self.Xold[Midx-1,:],self.Fold))**2
+            error =  abs(self.Xold[Midx+1,:]-self.RK2(self.Xold[Midx  ,:],self.Fold))**2 \
+                    +abs(self.Xold[Midx  ,:]-self.RK2(self.Xold[Midx-1,:],self.Fold))**2
         return sum(error)
 
     def newPointModelError(self,Midx):
-        if Midx == 0: # if we picked the first element
+        if Midx   == 0: # if we picked the first element
             error =  abs(self.Xnew[       1,:]-self.RK2(self.Xnew[       0,:],self.Fnew))**2
         elif Midx == self.M-1: # if we picked the last element
             error =  abs(self.Xnew[self.M-1,:]-self.RK2(self.Xnew[self.M-2,:],self.Fnew))**2
         else: # else we have to vary in both directions
-            error =  abs(self.Xnew[Midx+1,:]-self.RK2(self.Xnew[Midx-0,:],self.Fnew))**2 \
-                    +abs(self.Xnew[Midx+0,:]-self.RK2(self.Xnew[Midx-1,:],self.Fnew))**2
+            error =  abs(self.Xnew[Midx+1,:]-self.RK2(self.Xnew[Midx  ,:],self.Fnew))**2 \
+                    +abs(self.Xnew[Midx  ,:]-self.RK2(self.Xnew[Midx-1,:],self.Fnew))**2
         return sum(error)
 
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -141,14 +146,14 @@ class Annealer:
         error = 0.0
         for Midx in range(0,self.M):
             for Didx in self.Lidx:
-                error+=self.oldPointMeasError(Midx,Didx)
+                error += abs(self.Xold[Midx,Didx]-self.Y[Midx,Didx])**2
         self.oldMeasError = error
 
     def calcNewMeasError(self):
         error = 0.0
         for Midx in range(0,self.M):
             for Didx in self.Lidx:
-                error+=self.newPointMeasError(Midx,Didx)
+                error += abs(self.Xnew[Midx,Didx]-self.Y[Midx,Didx])**2
         self.newMeasError = error
 
     def calcOldModelError(self):
@@ -181,7 +186,7 @@ class Annealer:
                                  - self.oldPointModelError(self.Midx)
         elif self.Midx >= self.M:
             self.calcNewModelError()
-            self.deltaModelError = self.newModelError - self.oldModelError
+            self.deltaModelError = (self.newModelError - self.oldModelError)
 
     def calcDeltaAction(self):
         self.calcDeltaMeasError()
@@ -193,16 +198,16 @@ class Annealer:
     # All RNG based functions and acceptance/rejection functions are here
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     def rollDidx(self):
-        if self.pre == True:
+        if self.flagPre == True:
             self.Didx = np.random.choice(self.notLidx)
         else:
             self.Didx = np.random.choice(np.arange(self.D))
 
     def rollMidx(self):
-        if self.pre == True and self.NF > 1:
-            self.Midx = np.random.choice(np.append(np.arange(self.M),self.M+self.notLidx))
+        if self.flagPre == True and self.NF > 1:
+            self.Midx = np.random.choice(self.set1) # refer to 'Internal Variables'
         else:
-            self.Midx = np.random.choice(np.arange(self.M+self.NF))
+            self.Midx = np.random.choice(self.set2) # refer to 'Internal Variables'
 
     def perturbState(self):
         # Roll indices to perturb
@@ -211,7 +216,7 @@ class Annealer:
         # Perturb old to get new
         if self.Midx < self.M:
             self.Xnew[self.Midx,self.Didx] = self.Xold[self.Midx,self.Didx]\
-                                            + self.delta*(2.0*np.random.rand()-1.0)
+                                           + self.delta*(2.0*np.random.rand()-1.0)
         elif self.Midx >= self.M:
             self.Fnew[self.Midx-self.M] = self.Fold[self.Midx-self.M] + self.delta*(2.0*np.random.rand()-1.0)
 
@@ -251,15 +256,16 @@ class Annealer:
 
     def resetContainer(self):
         self.Xcontainer = np.zeros(self.Xnew.shape)
+
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # Misc Functions
     """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
     # For switching on/off the preconditioning routine
     def setPreTrue(self):
-        self.pre = True
+        self.flagPre = True
 
     def setPreFalse(self):
-        self.pre = False
+        self.flagPre = False
 
     # Reset Errors
     def resetErrors(self):
@@ -269,19 +275,25 @@ class Annealer:
 
     # Reset Arrays
     def resetArrays(self):
-        self.actionArray     = np.array([self.oldAction])
-        self.measErrorArray  = np.array([self.oldMeasError])
-        self.modelErrorArray = np.array([self.oldModelError])
+        self.measErrorArray   = np.array([self.oldMeasError])
+        self.modelErrorArray  = np.array([self.oldModelError])
+        self.actionArray      = np.array([self.oldAction])
+        self.modelActionArray = np.array([self.oldModelAction])
 
     # Appends the errors into an array that stores ALL errors from previous beta
     # Also calculates the latest (rolling) value of the action/errors
     def appendErrors(self):
-        self.oldMeasError    = self.oldMeasError+self.deltaMeasError
-        self.oldModelError   = self.oldModelError+self.deltaModelError
+        # Latest Values
+        self.oldMeasError    = self.oldMeasError + self.deltaMeasError
+        self.oldModelError   = self.oldModelError + self.deltaModelError
         self.oldAction       = self.Rm*self.oldMeasError + self.Rf*self.oldModelError
-        self.actionArray     = np.append(self.actionArray,self.oldAction)
-        self.measErrorArray  = np.append(self.measErrorArray,self.oldMeasError)
-        self.modelErrorArray = np.append(self.modelErrorArray,self.oldModelError)
+        self.oldModelAction  = self.Rf*self.oldModelError
+        # Cumulative Arrays
+        if self.flagAppend == True:
+            self.measErrorArray  = np.append(self.measErrorArray,self.oldMeasError)
+            self.modelErrorArray = np.append(self.modelErrorArray,self.oldModelError)
+            self.actionArray     = np.append(self.actionArray,self.oldAction)
+            self.modelActionArray= np.append(self.modelActionArray,self.oldModelAction)
 
     def replaceXold(self,Xlow):
         self.Xold = np.copy(Xlow)
@@ -391,7 +403,7 @@ def burnData(x,F,dt):
     return x
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Integrators, ripped from class functions
+# Integrators, From Class Functions
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # RK2 integration used in point model error
 def RK2(x,F,dt):
@@ -408,14 +420,15 @@ def RK4(x,F,dt):
     return x+(a1/6+a2/3+a3/3+a4/6)*dt
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Expected Errors Calculation
+# Expected (Normalized) Error Calculation, From Class Functions
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 def calcRealError(Z,Y,M,D,dt,Lidx):
     notLidx  = np.setxor1d(np.arange(D),Lidx)
+    NL       = len(Lidx)
 
     modelError = 0
     for i in range(0,M):
-        modelError += pointModelErrorRK2(Z,Y,M,i,8.17,dt)
+        modelError += pointModelErrorRK2(Z,Y,M,D,i,8.17,dt)
 
     # Replacing unmeasured states with noise
     for i in notLidx:
@@ -424,14 +437,11 @@ def calcRealError(Z,Y,M,D,dt,Lidx):
     measError = 0
     for i in range(0,M):
         for j in Lidx:
-            measError += pointMeasError(Z,Y,i,j,Lidx)
+            measError += pointMeasError(Z,Y,M,i,j,Lidx)
 
     return measError,modelError
 
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Functions used in calcRealError, ripped from class functions
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-def pointModelErrorRK2(X,Y,M,Midx,F,dt):
+def pointModelErrorRK2(X,Y,M,D,Midx,F,dt):
     if Midx == 0: # if we picked the first element
         error =  abs(X[       1,:]-RK2(X[       0,:],F,dt))**2
     elif Midx == M-1: # if we picked the last element
@@ -439,9 +449,9 @@ def pointModelErrorRK2(X,Y,M,Midx,F,dt):
     else: # else we have to vary in both directions
         error =  abs(X[Midx+1,:]-RK2(X[Midx-0,:],F,dt))**2 \
                 +abs(X[Midx+0,:]-RK2(X[Midx-1,:],F,dt))**2
-    return sum(error)
+    return sum(error)/M/D
 
-def pointModelErrorRK4(X,Y,M,Midx,F,dt):
+def pointModelErrorRK4(X,Y,M,D,Midx,F,dt):
     if Midx == 0: # if we picked the first element
         error =  abs(X[       1,:]-RK4(X[       0,:],F,dt))**2
     elif Midx == M-1: # if we picked the last element
@@ -449,10 +459,10 @@ def pointModelErrorRK4(X,Y,M,Midx,F,dt):
     else: # else we have to vary in both directions
         error =  abs(X[Midx+1,:]-RK4(X[Midx-0,:],F,dt))**2 \
                 +abs(X[Midx+0,:]-RK4(X[Midx-1,:],F,dt))**2
-    return sum(error)
+    return sum(error)/M/D
 
-def pointMeasError(X,Y,Midx,Didx,Lidx):
+def pointMeasError(X,Y,M,Midx,Didx,Lidx):
     if Didx in Lidx: # fail-safe check
-        return abs(X[Midx,Didx]-Y[Midx,Didx])**2
+        return abs(X[Midx,Didx]-Y[Midx,Didx])**2/M/len(Lidx)
     else:
         return 0
