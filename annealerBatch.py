@@ -43,11 +43,6 @@ def annealSome(MC):
 # Quick example that should get you familiar with the code.
 # By the way, 'overflow encountered in exp' error is expected.
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-# Setting Random Seed (for repeatability)
-# These two lines below are for batch runs on a cluster
-ID = int(sys.argv[1])
-np.random.seed(ID)
-
 # Model Constants
 M = 200
 D = 5
@@ -56,6 +51,9 @@ F = 8.5 #not a vector, so 'const'
 Lidx = [0,2,4]
 notLidx  = np.setxor1d(np.arange(D),Lidx)
 NL = len(Lidx)
+
+# Setting Random Seed when adding noise (for repeatability)
+np.random.seed(123)
 
 # Twin Experiment Data
 Z = np.loadtxt('./data/L96_D5_Fconst_truepath.dat')[0:M,:]
@@ -66,6 +64,9 @@ Y = Z + (2.0*np.random.rand(M,D)-1.0)
 [realMeasError, realModelError] = calcRealError(Z,Y,M,D,dt,Lidx)
 
 # Replacing unmeasured states with noise
+# These two lines below are for batch runs on a cluster
+ID = int(sys.argv[1])
+np.random.seed(ID)
 for i in notLidx:
     Y[:,i] = 10.0*(2.0*np.random.rand()-1.0)*np.ones(M)
 
