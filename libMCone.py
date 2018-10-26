@@ -98,20 +98,32 @@ class Annealer:
     # NOTE: These two are summed over all states, but with more information
     #       and some tweaking we can sum over the 'connected' variables only
     def oldPointModelError(self,Midx):
+        # if Midx   == 0: # if we picked the first element
+        #     error =  abs(self.Xold[       1,:]-self.RK2(self.Xold[       0,:],self.Fold))**2
+        # elif Midx == self.M-1: # if we picked the last element
+        #     error =  abs(self.Xold[self.M-1,:]-self.RK2(self.Xold[self.M-2,:],self.Fold))**2
         if Midx   == 0: # if we picked the first element
-            error =  abs(self.Xold[       1,:]-self.RK2(self.Xold[       0,:],self.Fold))**2
+            error =  abs(self.Xold[Midx+1,:]-self.RK2(self.Xold[Midx  ,:],self.Fold))**2\
+                    +abs(self.Xold[Midx+2,:]-self.RK2(self.RK2(self.Xold[Midx  ,:],self.Fold),self.Fold))**2
         elif Midx == self.M-1: # if we picked the last element
-            error =  abs(self.Xold[self.M-1,:]-self.RK2(self.Xold[self.M-2,:],self.Fold))**2
+            error =  abs(self.Xold[Midx  ,:]-self.RK2(self.Xold[Midx-1,:],self.Fold))**2\
+                    +abs(self.Xold[Midx  ,:]-self.RK2(self.RK2(self.Xold[Midx-2,:],self.Fold),self.Fold))**2
         else: # else we have to vary in both directions
             error =  abs(self.Xold[Midx+1,:]-self.RK2(self.Xold[Midx  ,:],self.Fold))**2 \
                     +abs(self.Xold[Midx  ,:]-self.RK2(self.Xold[Midx-1,:],self.Fold))**2
         return sum(error)
 
     def newPointModelError(self,Midx):
+        # if Midx   == 0: # if we picked the first element
+        #     error =  abs(self.Xnew[       1,:]-self.RK2(self.Xnew[       0,:],self.Fnew))**2
+        # elif Midx == self.M-1: # if we picked the last element
+        #     error =  abs(self.Xnew[self.M-1,:]-self.RK2(self.Xnew[self.M-2,:],self.Fnew))**2
         if Midx   == 0: # if we picked the first element
-            error =  abs(self.Xnew[       1,:]-self.RK2(self.Xnew[       0,:],self.Fnew))**2
+            error =  abs(self.Xnew[Midx+1,:]-self.RK2(self.Xnew[Midx  ,:],self.Fnew))**2\
+                    +abs(self.Xnew[Midx+2,:]-self.RK2(self.RK2(self.Xnew[Midx  ,:],self.Fnew),self.Fnew))**2
         elif Midx == self.M-1: # if we picked the last element
-            error =  abs(self.Xnew[self.M-1,:]-self.RK2(self.Xnew[self.M-2,:],self.Fnew))**2
+            error =  abs(self.Xnew[Midx  ,:]-self.RK2(self.Xnew[Midx-1,:],self.Fnew))**2\
+                    +abs(self.Xnew[Midx  ,:]-self.RK2(self.RK2(self.Xnew[Midx-2,:],self.Fnew),self.Fnew))**2
         else: # else we have to vary in both directions
             error =  abs(self.Xnew[Midx+1,:]-self.RK2(self.Xnew[Midx  ,:],self.Fnew))**2 \
                     +abs(self.Xnew[Midx  ,:]-self.RK2(self.Xnew[Midx-1,:],self.Fnew))**2
