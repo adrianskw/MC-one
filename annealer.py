@@ -9,7 +9,8 @@ import sys
 # own annealing routine. Here is a preannealer as example:
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is the annealer function used for both the pre- and main- annealing
-def annealSome(MC):
+# Three different versions
+def annealLatest(MC):
     # Useful Tallies
     count              = 0
     low_count          = 0
@@ -38,7 +39,76 @@ def annealSome(MC):
             accept_block_count = 0 # Reseting the block-related tallies
         if (count>= MC.maxIt):
             break
-    return accept_count,count,deltaArray
+    return accept_count,count,deltaArray,MC.Xold
+
+def annealAverage(MC):
+    # Useful Tallies
+    count              = 0
+    low_count          = 0
+    accept_count       = 0
+    # Quantities for adaptive delta
+    deltaArray = np.array([])
+    block_count        = 0
+    accept_block_count = 0
+    # Annealing Routine
+    Xavg = np.zeros(MC.Xold.shape)
+    while(1):
+        MC.perturbState()
+        MC.evalSoftAcceptance()
+        if(MC.isAccepted):
+            MC.keepNewState()
+            accept_count       += 1 # For calculating acceptance rate
+            accept_block_count += 1 # For adaptive delta
+        else:
+            MC.keepOldState()
+        Xavg += MC.Xold
+        count += 1
+        block_count += 1
+        # Adaptive delta subroutine
+        if (block_count == 200):
+            MC.updateDelta(MC.delta*(1+0.3*(float(accept_block_count)/block_count-0.5)))
+            deltaArray         = np.append(deltaArray,MC.delta)
+            block_count        = 0 # Reseting the block-related tallies
+            accept_block_count = 0 # Reseting the block-related tallies
+        if (count>= MC.maxIt):
+            break
+    return accept_count,count,deltaArray,Xavg
+
+def annealLowest(MC):
+    # Useful Tallies
+    count              = 0
+    low_count          = 0
+    accept_count       = 0
+    # Quantities for adaptive delta
+    deltaArray = np.array([])
+    block_count        = 0
+    accept_block_count = 0
+    # Annealing Routine
+    Xlow = np.copy(MC.Xold)
+    while(1):
+        lowestAction = MC.oldAction
+        MC.perturbState()
+        MC.evalSoftAcceptance()
+        if(MC.isAccepted):
+            MC.keepNewState()
+            accept_count       += 1 # For calculating acceptance rate
+            accept_block_count += 1 # For adaptive delta
+        else:
+            MC.keepOldState()
+        if(MC.oldAction < lowestAction):
+            Xlow = np.copy(MC.Xold)
+        MC.updateXold(Xlow)
+        count += 1
+        block_count += 1
+        # Adaptive delta subroutine
+        if (block_count == 200):
+            MC.updateDelta(MC.delta*(1+0.3*(float(accept_block_count)/block_count-0.5)))
+            deltaArray         = np.append(deltaArray,MC.delta)
+            block_count        = 0 # Reseting the block-related tallies
+            accept_block_count = 0 # Reseting the block-related tallies
+        if (count>= MC.maxIt):
+            break
+    return accept_count,count,deltaArray,Xlow
 
 """ EXAMPLE ROUTINE USING annealAll(MC) """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -96,9 +166,8 @@ for i in range(0,beta1):
         MC.updateMaxIt(50*M*D)
     else:
         MC.updateMaxIt(20*M*D)
-    [accept,count,deltaArr]=annealSome(MC)
+    [accept,count,deltaArr,Xt1[i]]=annealLatest(MC)
     print 'beta =',i,'accept rate = ',float(accept)/count,'Rf = ',MC.Rf,'delta = ',MC.delta
-    Xt1[i]      = MC.Xold
     deltaArray1 = np.append(deltaArray1,deltaArr)
     FArray1     = np.append(FArray1,MC.Fold)
     MC.updateRf(alpha1*MC.Rf)
@@ -118,7 +187,7 @@ MC.updateDelta(2.0)
 MC.resetErrors()
 MC.resetArrays()
 MC.setPreFalse()
-beta2  = 30
+beta2  = 20
 alpha2 = 1.3
 
 # Tracking Error and Action
@@ -128,9 +197,8 @@ Xt2         = np.ones((beta2,M,D))
 
 # Initializing the MC object
 for i in range(0,beta2):
-    [accept,count,deltaArr]=annealSome(MC)
+    [accept,count,deltaArr,Xt2[i]]=annealLatest(MC)
     print 'beta =',i,'accept rate = ',float(accept)/count,'Rf = ',MC.Rf,'delta = ',MC.delta
-    Xt2[i]      = MC.Xold
     deltaArray2 = np.append(deltaArray2,deltaArr)
     FArray2     = np.append(FArray2,MC.Fold)
     MC.updateRf(alpha2*MC.Rf)
