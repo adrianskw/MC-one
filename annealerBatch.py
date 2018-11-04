@@ -8,7 +8,8 @@ import sys
 # own annealing routine. Here is a preannealer as example:
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # This is the annealer function used for both the pre- and main- annealing
-def annealSome(MC):
+# Three different versions
+def annealLatest(MC):
     # Useful Tallies
     count              = 0
     low_count          = 0
@@ -32,11 +33,84 @@ def annealSome(MC):
         # Adaptive delta subroutine
         if (block_count == 200):
             MC.updateDelta(MC.delta*(1+0.3*(float(accept_block_count)/block_count-0.5)))
+            deltaArray         = np.append(deltaArray,MC.delta)
             block_count        = 0 # Reseting the block-related tallies
             accept_block_count = 0 # Reseting the block-related tallies
         if (count>= MC.maxIt):
             break
-    return accept_count,count,deltaArray
+    return accept_count,count,deltaArray,MC.Xold,MC.Fold
+
+def annealAverage(MC):
+    # Useful Tallies
+    count              = 0
+    low_count          = 0
+    accept_count       = 0
+    # Quantities for adaptive delta
+    deltaArray = np.array([])
+    block_count        = 0
+    accept_block_count = 0
+    # Annealing Routine
+    Xtot = np.zeros(MC.Xold.shape)
+    Ftot = np.zeros(MC.Fold.shape)
+    while(1):
+        MC.perturbState()
+        MC.evalSoftAcceptance()
+        if(MC.isAccepted):
+            MC.keepNewState()
+            accept_count       += 1 # For calculating acceptance rate
+            accept_block_count += 1 # For adaptive delta
+        else:
+            MC.keepOldState()
+        Xtot += MC.Xold
+        Ftot += MC.Fold
+        count += 1
+        block_count += 1
+        # Adaptive delta subroutine
+        if (block_count == 200):
+            MC.updateDelta(MC.delta*(1+0.3*(float(accept_block_count)/block_count-0.5)))
+            deltaArray         = np.append(deltaArray,MC.delta)
+            block_count        = 0 # Reseting the block-related tallies
+            accept_block_count = 0 # Reseting the block-related tallies
+        if (count>= MC.maxIt):
+            break
+    return accept_count,count,deltaArray,Xtot/count,Ftot/count
+
+def annealLowest(MC):
+    # Useful Tallies
+    count              = 0
+    low_count          = 0
+    accept_count       = 0
+    # Quantities for adaptive delta
+    deltaArray = np.array([])
+    block_count        = 0
+    accept_block_count = 0
+    # Annealing Routine
+    Xlow = np.copy(MC.Xold)
+    Flow = np.copy(MC.Fold)
+    while(1):
+        lowestAction = MC.oldAction
+        MC.perturbState()
+        MC.evalSoftAcceptance()
+        if(MC.isAccepted):
+            MC.keepNewState()
+            accept_count       += 1 # For calculating acceptance rate
+            accept_block_count += 1 # For adaptive delta
+        else:
+            MC.keepOldState()
+        if(MC.oldAction < lowestAction):
+            Xlow = np.copy(MC.Xold)
+            Flow = np.copy(MC.Fold)
+        count += 1
+        block_count += 1
+        # Adaptive delta subroutine
+        if (block_count == 200):
+            MC.updateDelta(MC.delta*(1+0.3*(float(accept_block_count)/block_count-0.5)))
+            deltaArray         = np.append(deltaArray,MC.delta)
+            block_count        = 0 # Reseting the block-related tallies
+            accept_block_count = 0 # Reseting the block-related tallies
+        if (count>= MC.maxIt):
+            break
+    return accept_count,count,deltaArray,Xlow,Flow
 
 """ EXAMPLE ROUTINE USING annealAll(MC) """
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -94,7 +168,6 @@ Xt1          = np.ones((beta1,M,D))
 MC = Annealer(Y,L96,dt,F,Lidx,Rm,Rf,maxIt,delta,True,True,False)
 Xinit = np.copy(MC.Xold)
 
-
 # Initializing the MC object
 for i in range(0,beta1):
     if 0 <= i <= 6:
@@ -102,6 +175,7 @@ for i in range(0,beta1):
     else:
         MC.updateMaxIt(20*M*D)
     annealSome(MC)
+    # Not saving diagnostics for the preannealing/burning-in phase
     # Xt1[i]       = MC.Xold
     # FArray1      = np.append(FArray1,MC.Fold)
     # measError1   = np.append(measError1,Rm*MC.oldMeasError/M/NL)
@@ -115,13 +189,13 @@ for i in range(0,beta1):
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Preannealing Constants
 MC.updateRf(1.0)
-MC.updateMaxIt(12*M*D)
+MC.updateMaxIt(20*M*D)
 MC.updateDelta(2.0)
 MC.resetErrors()
 MC.resetArrays()
 MC.setPreFalse()
 beta2  = 30
-alpha2 = 1.3
+alpha2 = 1.4
 
 # Tracking Error and Action
 measError2   = np.array([])
@@ -144,11 +218,24 @@ for i in range(0,beta2):
     MC.updateRf(alpha2*MC.Rf)
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# Sampler Annealing Phase
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+# Preannealing Constants
+MC.updateRf(25000.0)
+MC.updateMaxIt(100*M*D)
+MC.resetErrors()
+MC.resetArrays()
+MC.setPreFalse()
+beta3  = 1
+[accept,count,deltaArr,Xt3,Ft3]=annealAverage(MC)
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Saving Data
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 # Paths
-np.savetxt('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_path_'+str(ID)+'.dat',Xt2[-1])
-np.save('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_path_'+str(ID)+'.npy',Xt2)
+# np.savetxt('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_path_'+str(ID)+'.dat',Xt2[-1])
+# np.save('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_path_'+str(ID)+'.npy',Xt2)
+np.savetxt('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_path_'+str(ID)+'.dat',Xt3)
 
 # Misc
 np.savetxt('./data/L96_D'+str(D)+'_L'+str(len(Lidx))+'_Fconst_misc_'+str(ID)+'.dat',[FArray2,measError2,modelError2,modelAction2,action2])
