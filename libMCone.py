@@ -266,8 +266,12 @@ class Annealer:
     def updateMaxIt(self,maxIt):
         self.maxIt = maxIt
 
-    def updateXold(self,Xold):
+    def updateOld(self,Xold,Fold):
         self.Xold = np.copy(Xold)
+        self.Xnew = np.copy(Xold)
+        self.Fold = np.copy(Fold)
+        self.Fnew = np.copy(Fold)
+        self.resetErrors()
 
     def resetContainer(self):
         self.Xcontainer = np.zeros(self.Xnew.shape)
@@ -309,11 +313,6 @@ class Annealer:
             self.modelErrorArray = np.append(self.modelErrorArray,self.oldModelError)
             self.actionArray     = np.append(self.actionArray,self.oldAction)
             self.modelActionArray= np.append(self.modelActionArray,self.oldModelAction)
-
-    def replaceXold(self,Xlow):
-        self.Xold = np.copy(Xlow)
-        self.Xnew = np.copy(Xlow)
-        self.resetErrors()
 
     # Henry's initialization trick, by default set to True
     # Calculates the trajectories forward with 'bad' initial conditions
